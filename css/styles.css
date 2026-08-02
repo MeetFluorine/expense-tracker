@@ -26,7 +26,7 @@ html[data-theme="dark"]{
   color-scheme:dark;
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-html,body{margin:0;padding:0;overflow-x:hidden;}
+html,body{margin:0;padding:0;overflow-x:hidden;-webkit-overflow-scrolling:touch;}
 input[type="date"]{min-width:0;max-width:100%;box-sizing:border-box;}
 body{
   font-family:'Manrope',sans-serif; color:var(--ink); background:var(--bg);
@@ -110,7 +110,7 @@ svg.icon{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;s
 .link-btn{background:none;border:none;color:var(--ink-soft);text-decoration:underline;font-size:12.5px;cursor:pointer;padding:0;}
 
 /* ---------- App shell ---------- */
-.app-shell{display:flex;min-height:100vh;}
+.app-shell{display:flex;min-height:100vh;min-height:100dvh;}
 .sidebar{width:230px;flex:0 0 230px;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:20px 14px;position:sticky;top:0;height:100vh;}
 .brand-row{display:flex;align-items:center;gap:10px;padding:6px 8px 22px;}
 .brand-mark{width:34px;height:34px;border-radius:9px;background:var(--brand-deep);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
@@ -368,7 +368,7 @@ svg.icon{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;s
   .hero-card{display:block;}
   .recent-head .section-link{order:2;}
   .recent-head .recent-filter-inline{order:3;flex-basis:100%;}
-  .bottom-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--border);z-index:30;padding:8px calc(6px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(6px + env(safe-area-inset-left));justify-content:space-around;align-items:center;}
+  .bottom-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--border);z-index:30;padding:8px calc(6px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(6px + env(safe-area-inset-left));justify-content:space-around;align-items:center;transform:translateZ(0);-webkit-transform:translateZ(0);will-change:transform;-webkit-backface-visibility:hidden;backface-visibility:hidden;}
   .bn-item{display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:none;color:var(--ink-faint);font-size:10.5px;font-weight:700;padding:4px 6px;flex:1;}
   .bn-item svg{stroke:var(--ink-faint);}
   .bn-item.active{color:var(--brand-deep);}
