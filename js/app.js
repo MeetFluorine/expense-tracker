@@ -407,7 +407,7 @@
     document.querySelectorAll('.bn-item[data-page]').forEach(el => el.classList.toggle('active', el.dataset.page===p));
     $('pageTitle').textContent = PAGE_META[p].title;
     $('pageBackBtn').classList.toggle('show', p !== 'dashboard');
-    window.scrollTo(0,0);
+    document.querySelector('.main').scrollTop = 0;
     closeAllDropdowns();
   }
   document.querySelectorAll('[data-page]').forEach(el => el.addEventListener('click', () => goToPage(el.dataset.page)));
