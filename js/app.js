@@ -224,11 +224,6 @@
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     try { new Notification('Expense Book', { body: msg }); } catch(e) { console.error('Notification failed', e); }
   }
-  function updateNotifStatus(){
-    if (!('Notification' in window)) { $('notifStatus').textContent = 'Not supported in this browser'; return; }
-    const p = Notification.permission;
-    $('notifStatus').textContent = p === 'granted' ? 'Enabled ✓' : (p === 'denied' ? 'Blocked — check browser settings' : 'Not enabled yet');
-  }
   async function checkSpendAlert(){
     const threshold = Number(settings.alertThreshold) || 0;
     if (!threshold) return;
@@ -355,7 +350,6 @@
   function renderSettingsPage(){
     $('settingsAccountEmail').textContent = userEmail;
     $('accountEmail').textContent = userEmail;
-    updateNotifStatus();
   }
 
   function updateDescList(){
@@ -549,6 +543,7 @@
     $('appShell').classList.remove('hidden');
     goToPage('dashboard');
     if (!settings.tutorialDone) startTutorial();
+    maybeShowNotifPrompt();
   }
 
   // ---- PIN strength ----
@@ -655,11 +650,26 @@
     settings.pin = null; await saveSettingsToDb();
     showToast('PIN removed', false);
   });
-  $('enableBrowserNotif').addEventListener('click', async () => {
-    if (!('Notification' in window)) { showToast('Browser notifications not supported here', false); return; }
+  // ---- Notification permission: auto-prompt once per device, 30s after entering the app ----
+  function maybeShowNotifPrompt(){
+    if (!('Notification' in window)) return;                 // unsupported browser
+    if (Notification.permission !== 'default') return;        // already decided (granted or denied)
+    if (localStorage.getItem('notifPromptShown')) return;      // already shown once on this device
+    setTimeout(function tryShow(){
+      if (Notification.permission !== 'default') return; // re-check in case it changed meanwhile
+      if ($('tutOverlay').classList.contains('open')) { setTimeout(tryShow, 5000); return; } // don't stack on the tutorial
+      $('notifPromptBackdrop').classList.add('open');
+      localStorage.setItem('notifPromptShown', '1');
+    }, 30000);
+  }
+  $('notifPromptEnable').addEventListener('click', async () => {
+    $('notifPromptBackdrop').classList.remove('open');
+    if (!('Notification' in window)) return;
     await Notification.requestPermission();
-    updateNotifStatus();
-    showToast(Notification.permission==='granted' ? 'Browser notifications enabled' : 'Notifications not enabled', false);
+    showToast(Notification.permission==='granted' ? 'Notifications enabled' : 'Notifications not enabled', false);
+  });
+  $('notifPromptDismiss').addEventListener('click', () => {
+    $('notifPromptBackdrop').classList.remove('open');
   });
 
   // ---- Budget page ----
@@ -801,7 +811,7 @@
     { sel: '[data-tut="stats"]', title:'Your snapshot', text:'Total budget, spent, remaining and your daily average all live right here on the dashboard.' },
     { sel: '[data-tut="quick-add"], #bnFabBtn', title:'Quick Add Expense', text:'Log an expense in seconds — from the dashboard on desktop, or the + button below on mobile.' },
     { sel: '[data-tut="budget-btn"], [data-page="budget"]', title:'Budget Setup', text:'Add funds to your budget and set a monthly spend alert here.' },
-    { sel: '[data-tut="pin-btn"], [data-page="settings"]', title:'Security', text:'Change your PIN anytime from here or from Settings.' },
+    { sel: '[data-tut="pin-btn"], [data-page="settings"]', title:'Security', text:'Manage your security PIN anytime from Settings.' },
     { sel: '[data-tut="notif-btn"]', title:'Notifications', text:'Tap the bell anytime to see how much you have spent this month against your alert.' },
     { sel: '[data-tut="add-expense"], #bnFabBtn', title:'Add Expense', text:'Use this button anytime to add a full expense with payment mode.' }
   ];
@@ -809,10 +819,12 @@
   function visibleTarget(selList){
     const sels = selList.split(',').map(s=>s.trim());
     for (const s of sels){
-      const el = document.querySelector(s);
-      if (el && el.offsetParent !== null) return el;
+      const candidates = document.querySelectorAll(s);
+      for (const el of candidates){
+        if (el && el.offsetParent !== null) return el;
+      }
     }
-    return document.querySelector(sels[0]);
+    return null;
   }
   function showTutStep(){
     const step = TUT_STEPS[tutIndex];
@@ -827,11 +839,33 @@
     $('tutTipTitle').textContent = step.title;
     $('tutTipText').textContent = step.text;
     $('tutNext').textContent = tutIndex === TUT_STEPS.length-1 ? 'Done' : 'Next';
+
     const tip = $('tutTip');
-    let top = r.bottom + 16;
-    if (top + 150 > window.innerHeight) top = Math.max(16, r.top - 160);
-    let left = Math.min(Math.max(16, r.left), window.innerWidth - 286);
+    const arrow = $('tutArrow');
+    const margin = 16;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const tipWidth = Math.min(270, vw - margin*2);
+    tip.style.width = tipWidth + 'px';
+
+    const gap = 18;
+    const tipH = tip.offsetHeight || 150;
+    let placeBelow = true;
+    let top = r.bottom + gap;
+    if (top + tipH > vh - margin) { placeBelow = false; top = r.top - tipH - gap; }
+    top = Math.min(Math.max(margin, top), vh - tipH - margin);
+
+    let left = r.left + r.width/2 - tipWidth/2;
+    left = Math.min(Math.max(margin, left), vw - tipWidth - margin);
+
     tip.style.top = top+'px'; tip.style.left = left+'px';
+
+    // Arrow points from the tip straight at the highlighted element's center
+    const arrowSize = 16;
+    let arrowLeft = r.left + r.width/2 - arrowSize/2;
+    arrowLeft = Math.min(Math.max(left + 12, arrowLeft), left + tipWidth - 12 - arrowSize);
+    arrow.style.left = arrowLeft + 'px';
+    arrow.style.top = (placeBelow ? top - arrowSize/2 : top + tipH - arrowSize/2) + 'px';
+    arrow.style.boxShadow = placeBelow ? '-2px -2px 4px rgba(0,0,0,.06)' : '2px 2px 4px rgba(0,0,0,.06)';
   }
   function startTutorial(){
     tutIndex = 0;
