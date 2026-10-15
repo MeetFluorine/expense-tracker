@@ -404,7 +404,7 @@
     $('budgetLog').innerHTML = sorted.map(b => `<div class="card budget-log-row" data-id="${b.id}">
       <div class="exp-cat-icon" style="background:var(--brand-tint);"><svg class="icon" style="stroke:var(--brand-deep);" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></div>
       <div class="exp-mid"><div class="budget-log-note">${escapeHtml(b.note || 'Budget added')}</div><div class="budget-log-date">${b.date}</div></div>
-      <div class="exp-right"><span class="budget-log-amt">+${fmtMoney(b.amount)}</span><div class="exp-actions"><button class="bdel" data-id="${b.id}" title="Delete">${svgIcon('trash')}</button></div></div>
+      <div class="exp-right"><span class="budget-log-amt">+${fmtMoney(b.amount)}</span><div class="exp-actions"><button class="bedit" data-id="${b.id}" title="Change date">${svgIcon('edit')}</button><button class="bdel" data-id="${b.id}" title="Delete">${svgIcon('trash')}</button></div></div>
     </div>`).join('');
     $('budgetLogEmpty').classList.toggle('hidden', budgetEntries.length>0);
     $('alertThreshold').value = settings.alertThreshold || '';
@@ -747,6 +747,25 @@
     $('budgetNote').value=''; $('budgetAmount').value='';
     renderStats(); renderBudgetPage(); renderCategoryBreakdown();
     showToast(`Added ${fmtMoney(amount)} to your budget`, false);
+  });
+  // Change the date (month) a budget entry belongs to
+  $('budgetLog').addEventListener('click', ev => {
+    const btn = ev.target.closest('.bedit'); if (!btn) return;
+    const id = Number(btn.dataset.id);
+    const entry = budgetEntries.find(b => b.id === id); if (!entry) return;
+    const dateEl = btn.closest('.budget-log-row').querySelector('.budget-log-date');
+    if (dateEl.querySelector('input')) return;
+    dateEl.innerHTML = `<input type="date" class="budget-date-edit" value="${entry.date || ''}">`;
+    const inp = dateEl.firstChild;
+    inp.focus();
+    inp.addEventListener('change', async () => {
+      if (!inp.value) return;
+      entry.date = inp.value;
+      await saveBudgetToDb();
+      renderStats(); renderBudgetPage();
+      showToast(`Budget moved to ${MONTH_NAMES[Number(inp.value.slice(5,7))-1]} ${inp.value.slice(0,4)}`, false);
+    });
+    inp.addEventListener('blur', () => setTimeout(() => renderBudgetPage(), 150));
   });
   $('budgetLog').addEventListener('click', async ev => {
     const btn = ev.target.closest('.bdel'); if (!btn) return;
