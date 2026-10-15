@@ -98,6 +98,8 @@
   let expenses = [];
   let settings = { alertThreshold: 0, pin: null, lastAlertMonth: '', tutorialDone: false };
   let viewMonth = { y: new Date().getFullYear(), m: new Date().getMonth() };
+  // Month the dashboard is showing. Always starts on the current month at every login.
+  let dashMonth = { y: new Date().getFullYear(), m: new Date().getMonth() };
   let dateFrom = '', dateTo = '', quickDate = '', searchQuery = '', catFilterVal = '', payFilterVal = '', amtFilterVal = '';
   let recentSearchQuery = '', recentDateFilter = '';
   let lastDeleted = null, toastTimer = null;
@@ -135,10 +137,21 @@
   async function saveExpensesToDb(){ await userDoc('expenses').set({ list: expenses }); }
   async function saveSettingsToDb(){ await userDoc('settings').set(settings); }
 
-  function totals(){
-    const totalBudget = budgetEntries.reduce((s,b) => s + Number(b.amount), 0);
-    const totalSpent = expenses.reduce((s,e) => s + Number(e.amount), 0);
+  const inMonth = (date,y,m) => !!date && String(date).slice(0,7) === monthKey(y,m);
+  const budgetEntriesFor = (y,m) => budgetEntries.filter(b => inMonth(b.date,y,m));
+  const expensesFor = (y,m) => expenses.filter(e => inMonth(e.date,y,m));
+  // Budget / spent / remaining for ONE month (defaults to the month selected on the dashboard)
+  function totals(y = dashMonth.y, m = dashMonth.m){
+    const totalBudget = budgetEntriesFor(y,m).reduce((s,b) => s + Number(b.amount), 0);
+    const totalSpent = expensesFor(y,m).reduce((s,e) => s + Number(e.amount), 0);
     return { totalBudget, totalSpent, remaining: totalBudget - totalSpent };
+  }
+  function dailyAverage(y,m){
+    const now = new Date();
+    const cur = now.getFullYear()*12 + now.getMonth(), sel = y*12 + m;
+    if (sel > cur) return 0;                                   // future month
+    const days = sel === cur ? now.getDate() : new Date(y, m+1, 0).getDate(); // days so far / full month
+    return Math.round(monthSpent(y,m) / days);
   }
   function monthSpent(y,m){
     const key = monthKey(y,m);
@@ -152,34 +165,81 @@
 
   // ---------- Stats & progress ----------
   function renderStats(){
-    const { totalBudget, totalSpent, remaining } = totals();
+    const { y, m } = dashMonth;
+    const { totalBudget, totalSpent, remaining } = totals(y, m);
+    const label = `${MONTH_NAMES[m]} ${y}`;
     $('statBudget').textContent = fmtMoney(totalBudget);
-    $('statBudgetSub').textContent = `Budget for ${MONTH_NAMES[new Date().getMonth()]} ${new Date().getFullYear()}`;
+    $('statBudgetSub').textContent = `Budget for ${label}`;
     $('statSpent').textContent = fmtMoney(totalSpent);
     $('statSpentSub').textContent = totalBudget > 0 ? `${Math.min(100, Math.round((totalSpent/totalBudget)*100))}% of budget` : '—';
     const remEl = $('statRemaining');
     remEl.textContent = fmtMoney(remaining);
     remEl.style.color = remaining >= 0 ? 'var(--brand-deep)' : 'var(--danger)';
     $('statRemainingSub').textContent = totalBudget > 0 ? `${Math.max(0, Math.round((remaining/totalBudget)*100))}% left` : '—';
-    const now = new Date();
-    const daysElapsed = now.getDate();
-    const curSpent = monthSpent(now.getFullYear(), now.getMonth());
-    $('statAvg').textContent = fmtMoney(Math.round(curSpent / daysElapsed));
+    const avg = dailyAverage(y, m);
+    $('statAvg').textContent = fmtMoney(avg);
     const pct = totalBudget > 0 ? Math.min(100, (totalSpent/totalBudget)*100) : (totalSpent>0?100:0);
     $('progressFill').style.width = pct + '%';
     $('progressFill').classList.toggle('warn', remaining < 0);
     $('progressPct').textContent = Math.round(pct) + '%';
 
+    // Month pickers (mobile hero + desktop)
+    $('heroMonthLabel').firstChild.textContent = label + ' ';
+    $('dashMonthTextDesktop').textContent = label;
+
     // Mobile hero card
     $('heroBudget').textContent = fmtMoney(totalBudget);
-    $('heroMonthLabel').firstChild.textContent = `${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()} `;
     $('heroSpent').textContent = fmtMoney(totalSpent);
     $('heroRemaining').textContent = fmtMoney(remaining);
-    $('heroAvg').textContent = fmtMoney(Math.round(curSpent / daysElapsed));
+    $('heroAvg').textContent = fmtMoney(avg);
     $('heroProgressFill').style.width = pct + '%';
     $('heroProgressFill').classList.toggle('warn', remaining < 0);
     $('heroProgressPct').textContent = Math.round(pct) + '% of budget used';
   }
+
+  // ---------- Dashboard month picker ----------
+  let pickerYear = dashMonth.y;
+  let pickerAnchor = null;
+  function closeMonthPicker(){ const p = $('monthPicker'); if (p) p.classList.add('hidden'); pickerAnchor = null; }
+  function renderMonthPicker(){
+    const now = new Date();
+    $('mpYear').textContent = pickerYear;
+    $('mpGrid').innerHTML = MONTH_NAMES.map((n,i) => {
+      const sel = pickerYear === dashMonth.y && i === dashMonth.m;
+      const cur = pickerYear === now.getFullYear() && i === now.getMonth();
+      return `<button type="button" class="mp-month${sel?' selected':''}${cur?' current':''}" data-m="${i}">${n.slice(0,3)}</button>`;
+    }).join('');
+  }
+  function openMonthPicker(anchor){
+    if (pickerAnchor === anchor && !$('monthPicker').classList.contains('hidden')) { closeMonthPicker(); return; }
+    pickerAnchor = anchor; pickerYear = dashMonth.y;
+    renderMonthPicker();
+    const pop = $('monthPicker');
+    pop.classList.remove('hidden');
+    const r = anchor.getBoundingClientRect();
+    const w = pop.offsetWidth, h = pop.offsetHeight;
+    let left = Math.max(12, Math.min(r.left, window.innerWidth - w - 12));
+    let top = r.bottom + 8;
+    if (top + h > window.innerHeight - 12) top = Math.max(12, r.top - h - 8);
+    pop.style.left = left + 'px'; pop.style.top = top + 'px';
+  }
+  function setDashMonth(y, m){
+    dashMonth = { y, m };
+    closeMonthPicker();
+    catExpanded = false;
+    renderStats(); renderCategoryBreakdown(); renderRecent();
+  }
+  [$('heroMonthLabel'), $('dashMonthBtnDesktop')].forEach(b => b.addEventListener('click', ev => { ev.stopPropagation(); openMonthPicker(b); }));
+  $('mpPrev').addEventListener('click', () => { pickerYear -= 1; renderMonthPicker(); });
+  $('mpNext').addEventListener('click', () => { pickerYear += 1; renderMonthPicker(); });
+  $('mpGrid').addEventListener('click', ev => {
+    const b = ev.target.closest('.mp-month'); if (!b) return;
+    setDashMonth(pickerYear, Number(b.dataset.m));
+  });
+  $('mpThisMonth').addEventListener('click', () => { const n = new Date(); setDashMonth(n.getFullYear(), n.getMonth()); });
+  document.addEventListener('click', ev => { if (!ev.target.closest('#monthPicker')) closeMonthPicker(); });
+  document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeMonthPicker(); });
+  window.addEventListener('resize', closeMonthPicker);
 
   function renderAlertBanner(){
     const threshold = Number(settings.alertThreshold) || 0;
@@ -241,12 +301,12 @@
   // ---------- Category breakdown ----------
   function renderCategoryBreakdown(){
     const sums = {};
-    expenses.forEach(e => { sums[e.category] = (sums[e.category] || 0) + Number(e.amount); });
+    expensesFor(dashMonth.y, dashMonth.m).forEach(e => { sums[e.category] = (sums[e.category] || 0) + Number(e.amount); });
     let entries = Object.entries(sums).sort((a,b) => b[1]-a[1]);
     const total = entries.reduce((s,[,v])=>s+v,0);
     const grid = $('catGrid');
     if (entries.length === 0){
-      grid.innerHTML = ''; $('catEmpty').classList.remove('hidden'); $('catViewAll').classList.add('hidden');
+      grid.innerHTML = ''; $('catEmpty').textContent = `No expenses in ${MONTH_NAMES[dashMonth.m]} ${dashMonth.y}.`; $('catEmpty').classList.remove('hidden'); $('catViewAll').classList.add('hidden');
       return;
     }
     $('catEmpty').classList.add('hidden');
@@ -279,7 +339,9 @@
   }
 
   function renderRecent(){
-    let list = expenses.slice();
+    const isFilteringEarly = !!(recentDateFilter || recentSearchQuery.trim());
+    // Searching / date-filtering looks across all months; otherwise show the selected month only
+    let list = isFilteringEarly ? expenses.slice() : expensesFor(dashMonth.y, dashMonth.m);
     if (recentDateFilter) list = list.filter(e => e.date === recentDateFilter);
     if (recentSearchQuery.trim()){
       const q = recentSearchQuery.trim().toLowerCase();
@@ -294,7 +356,7 @@
       $('recentEmpty').classList.remove('hidden');
       $('recentEmpty').querySelector('div').textContent = 'No matching expenses found.';
     } else if (!isFiltering) {
-      $('recentEmpty').querySelector('div').textContent = 'No expenses recorded yet.';
+      $('recentEmpty').querySelector('div').textContent = `No expenses in ${MONTH_NAMES[dashMonth.m]} ${dashMonth.y}.`;
     }
   }
 
@@ -334,7 +396,8 @@
   }
 
   function renderBudgetPage(){
-    const { totalBudget } = totals();
+    const now = new Date();
+    const { totalBudget } = totals(now.getFullYear(), now.getMonth());
     $('budgetTotalBig').textContent = fmtMoney(totalBudget);
     $('budgetEntriesCount').textContent = `${budgetEntries.length} entr${budgetEntries.length===1?'y':'ies'}`;
     const sorted = budgetEntries.slice().sort((a,b)=> a.date===b.date ? b.id-a.id : (a.date<b.date?1:-1));
@@ -513,6 +576,7 @@
       populateCategorySelect($('qaCategory'));
       populateCategorySelect($('mCategory'));
       const cf = $('catFilter'); Object.keys(CAT_META).forEach(c => { const o=document.createElement('option'); o.value=c; o.textContent=c; cf.appendChild(o); });
+      { const n = new Date(); dashMonth = { y: n.getFullYear(), m: n.getMonth() }; }
       await loadData();
       renderAll();
 
